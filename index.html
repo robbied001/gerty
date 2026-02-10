@@ -187,6 +187,154 @@
       color: var(--text-dim);
     }
 
+    /* ── Battery extra details ─────────────────────────── */
+    .battery-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+      font-size: 0.8rem;
+    }
+    .battery-stat-label {
+      color: var(--text-dim);
+    }
+    .battery-stat-value {
+      text-align: right;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .battery-source {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+    .source-victron {
+      background: rgba(34,197,94,0.15);
+      color: var(--green);
+    }
+    .source-mock {
+      background: rgba(113,113,122,0.15);
+      color: var(--text-dim);
+    }
+
+    /* ── Settings modal ────────────────────────────────── */
+    .settings-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: border-color 0.2s, color 0.2s;
+      z-index: 10;
+    }
+    .settings-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .settings-btn svg { width: 20px; height: 20px; }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      place-items: center;
+      z-index: 100;
+    }
+    .modal-overlay.open {
+      display: grid;
+    }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      width: 90%;
+      max-width: 440px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+    }
+    .modal p.subtitle {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .modal label {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+    .modal input[type="text"],
+    .modal input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      margin-bottom: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .modal input:focus {
+      border-color: var(--accent);
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      flex: 1;
+    }
+    .btn-secondary {
+      background: var(--border);
+      color: var(--text);
+    }
+    .btn-danger {
+      background: rgba(239,68,68,0.15);
+      color: var(--red);
+    }
+    .modal-status {
+      font-size: 0.8rem;
+      margin-top: 12px;
+      min-height: 1.2em;
+    }
+    .modal-status.ok { color: var(--green); }
+    .modal-status.err { color: var(--red); }
+
     /* ── Coming soon cards ────────────────────────────── */
     .card-coming-soon {
       opacity: 0.55;
@@ -305,9 +453,22 @@
       <div class="battery-bar-track">
         <div class="battery-bar-fill" id="battery-bar" style="width:0%"></div>
       </div>
+      <div class="battery-stats" id="battery-stats" style="display:none">
+        <span class="battery-stat-label">Voltage</span>
+        <span class="battery-stat-value" id="battery-voltage">--</span>
+        <span class="battery-stat-label">Power</span>
+        <span class="battery-stat-value" id="battery-power">--</span>
+        <span class="battery-stat-label">Current</span>
+        <span class="battery-stat-value" id="battery-current">--</span>
+        <span class="battery-stat-label">State</span>
+        <span class="battery-stat-value" id="battery-charge-state">--</span>
+      </div>
       <div class="battery-details">
         <span id="battery-status">Reading...</span>
-        <span id="battery-pct-small"></span>
+        <span>
+          <span id="battery-source" class="battery-source source-mock" style="display:none"></span>
+          <span id="battery-pct-small"></span>
+        </span>
       </div>
     </div>
 
@@ -391,6 +552,42 @@
 
   </main>
 
+  <!-- Settings button -->
+  <button class="settings-btn" id="open-settings" title="Victron VRM Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  </button>
+
+  <!-- Victron settings modal -->
+  <div class="modal-overlay" id="settings-overlay">
+    <div class="modal">
+      <h2>Victron VRM Connection</h2>
+      <p class="subtitle">
+        Connect your Victron MultiPlus II to read live battery data.<br>
+        Create an access token at
+        <strong>vrm.victronenergy.com &rarr; Settings &rarr; Access Tokens</strong>.<br>
+        Find your Site ID in the VRM portal URL: <code>vrm…/installation/<strong>{siteId}</strong>/…</code>
+      </p>
+
+      <label for="vrm-token">Access Token</label>
+      <input type="password" id="vrm-token" placeholder="paste your VRM access token">
+
+      <label for="vrm-site">Site / Installation ID</label>
+      <input type="text" id="vrm-site" placeholder="e.g. 123456">
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="settings-cancel">Cancel</button>
+        <button class="btn btn-danger" id="settings-clear" style="display:none">Disconnect</button>
+        <button class="btn btn-primary" id="settings-save">Save &amp; Test</button>
+      </div>
+      <div class="modal-status" id="settings-status"></div>
+    </div>
+  </div>
+
+  <script src="victron.js"></script>
   <script src="devices.js"></script>
   <script src="app.js"></script>
 </body>

@@ -58,12 +58,114 @@ function renderBattery(state) {
   const bar = $("battery-bar");
   bar.style.width      = pct + "%";
   bar.style.background = batteryColor(pct);
+
+  // Extra Victron details
+  const statsEl = $("battery-stats");
+  if (state.source === "victron") {
+    statsEl.style.display = "";
+    $("battery-voltage").textContent =
+      state.voltage !== null ? state.voltage.toFixed(1) + " V" : "--";
+    $("battery-power").textContent =
+      state.power !== null ? state.power.toFixed(0) + " W" : "--";
+    $("battery-current").textContent =
+      state.current !== null ? state.current.toFixed(1) + " A" : "--";
+    $("battery-charge-state").textContent = state.state || "--";
+  } else {
+    statsEl.style.display = "none";
+  }
+
+  // Source badge
+  const badge = $("battery-source");
+  badge.style.display = "";
+  if (state.source === "victron") {
+    badge.textContent = "VRM Live";
+    badge.className = "battery-source source-victron";
+  } else {
+    badge.textContent = "Mock";
+    badge.className = "battery-source source-mock";
+  }
 }
 
 async function refreshBattery() {
-  const state = await Devices.solarBattery.getState();
-  renderBattery(state);
+  try {
+    const state = await Devices.solarBattery.getState();
+    renderBattery(state);
+  } catch (err) {
+    console.error("Battery refresh error:", err);
+  }
 }
+
+// ── Victron Settings Modal ───────────────────────────────
+const overlay    = $("settings-overlay");
+const tokenInput = $("vrm-token");
+const siteInput  = $("vrm-site");
+const statusEl   = $("settings-status");
+const clearBtn   = $("settings-clear");
+
+function openSettings() {
+  const creds = typeof Victron !== "undefined" && Victron.getCredentials();
+  if (creds) {
+    tokenInput.value = creds.accessToken;
+    siteInput.value  = creds.siteId;
+    clearBtn.style.display = "";
+  } else {
+    tokenInput.value = "";
+    siteInput.value  = "";
+    clearBtn.style.display = "none";
+  }
+  statusEl.textContent = "";
+  statusEl.className = "modal-status";
+  overlay.classList.add("open");
+}
+
+function closeSettings() {
+  overlay.classList.remove("open");
+}
+
+$("open-settings").addEventListener("click", openSettings);
+$("settings-cancel").addEventListener("click", closeSettings);
+overlay.addEventListener("click", (e) => {
+  if (e.target === overlay) closeSettings();
+});
+
+$("settings-save").addEventListener("click", async () => {
+  const token = tokenInput.value.trim();
+  const site  = siteInput.value.trim();
+
+  if (!token || !site) {
+    statusEl.textContent = "Both fields are required.";
+    statusEl.className = "modal-status err";
+    return;
+  }
+
+  statusEl.textContent = "Testing connection...";
+  statusEl.className = "modal-status";
+
+  Victron.setCredentials(token, site);
+  const result = await Victron.testConnection();
+
+  if (result.success) {
+    statusEl.textContent = "Connected! " + (result.name || "");
+    statusEl.className = "modal-status ok";
+    setTimeout(() => {
+      closeSettings();
+      refreshBattery();
+    }, 1200);
+  } else {
+    statusEl.textContent = "Failed: " + result.error;
+    statusEl.className = "modal-status err";
+  }
+});
+
+$("settings-clear").addEventListener("click", () => {
+  Victron.clearCredentials();
+  tokenInput.value = "";
+  siteInput.value  = "";
+  clearBtn.style.display = "none";
+  statusEl.textContent = "Disconnected. Using mock data.";
+  statusEl.className = "modal-status";
+  refreshBattery();
+});
 
 // ── Init ─────────────────────────────────────────────────
 updateClock();

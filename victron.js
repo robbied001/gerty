@@ -21,11 +21,19 @@
  *  Unit-ID: 100  (com.victronenergy.system)
  *  Enable Modbus TCP on the GX: Settings → Services → Modbus-TCP → ON
  *  Note: Modbus TCP requires a server-side proxy since browsers cannot
- *  open raw TCP sockets. The VRM API approach works from the browser.
+ *  open raw TCP sockets.
+ *
+ * ── How it works ────────────────────────────────────────────────────
+ *  The VRM API does NOT send CORS headers, so browsers block direct
+ *  fetch() calls.  Gerty's server.js includes a thin proxy:
+ *      /api/vrm/*  →  https://vrmapi.victronenergy.com/v2/*
+ *  All requests go through that proxy so CORS is never an issue.
+ *  Run:  node server.js
  */
 
 const Victron = (() => {
-  const VRM_BASE = "https://vrmapi.victronenergy.com/v2";
+  // Local proxy path (served by server.js) — avoids CORS.
+  const VRM_BASE = "/api/vrm";
 
   // ── Persistent config (localStorage) ─────────────────────────────
   const STORAGE_KEY = "gerty_victron_config";
@@ -98,18 +106,23 @@ const Victron = (() => {
     const creds = getCredentials();
     if (!creds) throw new Error("Victron VRM not configured");
 
-    // Use the diagnostics endpoint — it returns all current installation data
-    // including battery SOC, voltage, current, power, and state.
+    // Try the diagnostics endpoint first — returns all live readings.
+    // Fall back to system-overview if diagnostics has no battery data.
     const data = await vrmFetch(
       `/installations/${creds.siteId}/diagnostics?count=1`
     );
 
     const records = data.records || [];
 
-    // Helper: find a diagnostic record by its "code" field
+    // Helper: find a diagnostic record by its "code" field.
+    // VRM diagnostic codes for battery:
+    //   SOC = state of charge, bv = battery voltage,
+    //   bc = battery current, bp = battery power, bs = battery state
     const find = (code) => {
       const r = records.find((d) => d.code === code);
-      return r ? parseFloat(r.formattedValue || r.rawValue) : null;
+      if (!r) return null;
+      const val = parseFloat(r.formattedValue ?? r.rawValue);
+      return isNaN(val) ? null : val;
     };
 
     const soc = find("SOC");
@@ -121,7 +134,7 @@ const Victron = (() => {
     const stateMap = { 0: "Idle", 1: "Charging", 2: "Discharging" };
 
     return {
-      percent: soc !== null && !isNaN(soc) ? soc : 0,
+      percent: soc !== null ? soc : 0,
       voltage: voltage,
       current: current,
       power: power,

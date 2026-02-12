@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: gerty
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server.js
+    envVars:
+      - key: GERTY_PASSWORD
+        sync: false  # you'll set this manually in the Render dashboard
+      - key: NODE_ENV
+        value: production

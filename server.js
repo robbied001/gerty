@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Gerty – lightweight dev server.
+ * Gerty – lightweight server with VRM proxy & password protection.
  *
  * Serves the static dashboard AND proxies requests to the Victron VRM API
  * so the browser never hits a CORS wall.
@@ -8,17 +8,24 @@
  *   node server.js            → http://localhost:3000
  *   PORT=8080 node server.js  → http://localhost:8080
  *
+ * Environment variables:
+ *   PORT            – listen port (default 3000)
+ *   GERTY_PASSWORD  – if set, requires this password to access the dashboard
+ *                     (uses HTTP Basic Auth, username is ignored)
+ *
  * Routes:
  *   /api/vrm/*  →  https://vrmapi.victronenergy.com/v2/*  (proxied)
  *   /*          →  static files from this directory
  */
 
-const http  = require("http");
-const https = require("https");
-const fs    = require("fs");
-const path  = require("path");
+const http   = require("http");
+const https  = require("https");
+const crypto = require("crypto");
+const fs     = require("fs");
+const path   = require("path");
 
 const PORT     = parseInt(process.env.PORT, 10) || 3000;
+const PASSWORD = process.env.GERTY_PASSWORD || "";
 const VRM_HOST = "vrmapi.victronenergy.com";
 const VRM_BASE = "/v2";
 
@@ -33,9 +40,34 @@ const MIME = {
   ".ico":  "image/x-icon",
 };
 
+// ── Password protection (HTTP Basic Auth) ──────────────────
+function checkAuth(req, res) {
+  if (!PASSWORD) return true; // no password set → open access
+
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Basic ")) {
+    const decoded = Buffer.from(header.slice(6), "base64").toString();
+    // Accept any username, just check the password
+    const pass = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
+    // Constant-time comparison to prevent timing attacks
+    if (pass.length === PASSWORD.length &&
+        crypto.timingSafeEqual(Buffer.from(pass), Buffer.from(PASSWORD))) {
+      return true;
+    }
+  }
+
+  res.writeHead(401, {
+    "WWW-Authenticate": 'Basic realm="Gerty"',
+    "Content-Type": "text/plain",
+  });
+  res.end("Unauthorized – set password via GERTY_PASSWORD env variable");
+  return false;
+}
+
 // ── Static file handler ────────────────────────────────────
 function serveStatic(req, res) {
-  let filePath = path.join(__dirname, req.url === "/" ? "index.html" : req.url);
+  const urlPath = req.url.split("?")[0]; // strip query string
+  let filePath = path.join(__dirname, urlPath === "/" ? "index.html" : urlPath);
   const ext = path.extname(filePath);
 
   // Prevent directory traversal
@@ -108,7 +140,7 @@ function proxyVRM(req, res) {
 
 // ── Server ─────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
-  // Handle CORS preflight
+  // Handle CORS preflight (no auth needed for OPTIONS)
   if (req.method === "OPTIONS" && req.url.startsWith("/api/vrm")) {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
@@ -120,6 +152,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Password gate — everything except CORS preflight is protected
+  if (!checkAuth(req, res)) return;
+
   if (req.url.startsWith("/api/vrm")) {
     proxyVRM(req, res);
   } else {
@@ -128,6 +163,12 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  Gerty is running at  http://localhost:${PORT}\n`);
-  console.log("  VRM API proxy at     /api/vrm/*\n");
+  console.log(`\n  Gerty is running at  http://localhost:${PORT}`);
+  console.log("  VRM API proxy at     /api/vrm/*");
+  if (PASSWORD) {
+    console.log("  Password protection  ENABLED");
+  } else {
+    console.log("  Password protection  OFF (set GERTY_PASSWORD to enable)");
+  }
+  console.log();
 });

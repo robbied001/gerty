@@ -218,6 +218,28 @@
       background: rgba(113,113,122,0.15);
       color: var(--text-dim);
     }
+    .source-solaredge {
+      background: rgba(34,197,94,0.15);
+      color: var(--green);
+    }
+
+    /* ── Solar Production card ─────────────────────────── */
+    .production-icon { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+    .production-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+      font-size: 0.8rem;
+    }
+    .production-stat-label {
+      color: var(--text-dim);
+    }
+    .production-stat-value {
+      text-align: right;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* ── Settings modal ────────────────────────────────── */
     .settings-btn {
@@ -472,23 +494,39 @@
       </div>
     </div>
 
-    <!-- ── Coming Soon: Lighting ──────────────────────── -->
-    <div class="card card-coming-soon">
+    <!-- ── Solar Production (SolarEdge) ─────────────────── -->
+    <div class="card" id="production-card">
       <div class="card-header">
-        <div class="card-icon coming-soon-icon">
+        <div class="card-icon production-icon">
+          <!-- solar panel SVG -->
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 18h6"/>
-            <path d="M10 22h4"/>
-            <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5C8.26 12.26 8.72 13.02 8.91 14"/>
+            <rect x="2" y="4" width="20" height="12" rx="2"/>
+            <path d="M12 4v12"/>
+            <path d="M2 10h20"/>
+            <path d="M7 20h10"/>
+            <path d="M9 16v4"/>
+            <path d="M15 16v4"/>
           </svg>
         </div>
         <div>
-          <div class="card-title">Lighting</div>
+          <div class="card-title">Solar Production</div>
+          <div class="card-value" id="solar-power">-- kW</div>
         </div>
       </div>
-      <div class="coming-soon-body">
-        <span class="coming-soon-label">Coming soon</span>
+      <div class="production-stats" id="production-stats">
+        <span class="production-stat-label">Today</span>
+        <span class="production-stat-value" id="solar-today">--</span>
+        <span class="production-stat-label">This Month</span>
+        <span class="production-stat-value" id="solar-month">--</span>
+        <span class="production-stat-label">This Year</span>
+        <span class="production-stat-value" id="solar-year">--</span>
+        <span class="production-stat-label">Lifetime</span>
+        <span class="production-stat-value" id="solar-lifetime">--</span>
+      </div>
+      <div class="battery-details">
+        <span id="solar-status">Reading...</span>
+        <span id="solar-source" class="battery-source source-mock" style="display:none"></span>
       </div>
     </div>
 
@@ -561,7 +599,7 @@
     </svg>
   </button>
 
-  <!-- Victron settings modal -->
+  <!-- Settings modal -->
   <div class="modal-overlay" id="settings-overlay">
     <div class="modal">
       <h2>Victron VRM Connection</h2>
@@ -584,10 +622,32 @@
         <button class="btn btn-primary" id="settings-save">Save &amp; Test</button>
       </div>
       <div class="modal-status" id="settings-status"></div>
+
+      <hr style="border:none; border-top:1px solid var(--border); margin:24px 0 20px;">
+
+      <h2>SolarEdge Inverter</h2>
+      <p class="subtitle">
+        Connect your SolarEdge inverter to read live solar production.<br>
+        Log in at <strong>monitoring.solaredge.com</strong> &rarr; Admin (cog) &rarr; Site Access &rarr; enable API Access.<br>
+        Your Site ID is in the URL: <code>…/p/site/<strong>{siteId}</strong>/…</code>
+      </p>
+
+      <label for="se-apikey">API Key</label>
+      <input type="password" id="se-apikey" placeholder="paste your SolarEdge API key">
+
+      <label for="se-site">Site ID</label>
+      <input type="text" id="se-site" placeholder="e.g. 1234567">
+
+      <div class="modal-actions">
+        <button class="btn btn-danger" id="se-clear" style="display:none">Disconnect</button>
+        <button class="btn btn-primary" id="se-save">Save &amp; Test</button>
+      </div>
+      <div class="modal-status" id="se-status"></div>
     </div>
   </div>
 
   <script src="victron.js"></script>
+  <script src="solaredge.js"></script>
   <script src="devices.js"></script>
   <script src="app.js"></script>
 </body>

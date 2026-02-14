@@ -28,6 +28,8 @@ const PORT     = parseInt(process.env.PORT, 10) || 3000;
 const PASSWORD = process.env.GERTY_PASSWORD || "";
 const VRM_HOST = "vrmapi.victronenergy.com";
 const VRM_BASE = "/v2";
+const SE_HOST  = "monitoringapi.solaredge.com";
+const SE_BASE  = "";
 
 // ── MIME types for static serving ──────────────────────────
 const MIME = {
@@ -138,6 +140,43 @@ function proxyVRM(req, res) {
   req.pipe(proxyReq);
 }
 
+// ── SolarEdge API proxy handler ─────────────────────────────
+function proxySolarEdge(req, res) {
+  // Strip the /api/solaredge prefix → forward the rest
+  const sePath = SE_BASE + req.url.replace(/^\/api\/solaredge/, "");
+
+  const options = {
+    hostname: SE_HOST,
+    port: 443,
+    path: sePath,
+    method: "GET",
+    headers: {
+      "Host": SE_HOST,
+      "Accept": "application/json",
+    },
+  };
+
+  const proxyReq = https.request(options, (proxyRes) => {
+    const responseHeaders = {
+      "Content-Type": proxyRes.headers["content-type"] || "application/json",
+      "Access-Control-Allow-Origin": "*",
+    };
+    res.writeHead(proxyRes.statusCode, responseHeaders);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on("error", (err) => {
+    console.error("SolarEdge proxy error:", err.message);
+    res.writeHead(502, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify({ error: "SolarEdge API unreachable: " + err.message }));
+  });
+
+  proxyReq.end();
+}
+
 // ── Server ─────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
   // Handle CORS preflight (no auth needed for OPTIONS)
@@ -157,6 +196,8 @@ const server = http.createServer((req, res) => {
 
   if (req.url.startsWith("/api/vrm")) {
     proxyVRM(req, res);
+  } else if (req.url.startsWith("/api/solaredge")) {
+    proxySolarEdge(req, res);
   } else {
     serveStatic(req, res);
   }
@@ -165,6 +206,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`\n  Gerty is running at  http://localhost:${PORT}`);
   console.log("  VRM API proxy at     /api/vrm/*");
+  console.log("  SolarEdge proxy at   /api/solaredge/*");
   if (PASSWORD) {
     console.log("  Password protection  ENABLED");
   } else {

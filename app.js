@@ -95,6 +95,50 @@ async function refreshBattery() {
   }
 }
 
+// ── Solar Production (SolarEdge) ─────────────────────────
+function formatEnergy(wh) {
+  if (wh >= 1_000_000) return (wh / 1_000_000).toFixed(1) + " MWh";
+  if (wh >= 1_000) return (wh / 1_000).toFixed(1) + " kWh";
+  return Math.round(wh) + " Wh";
+}
+
+function renderProduction(state) {
+  const kw = (state.currentPower / 1000).toFixed(2);
+  $("solar-power").textContent = kw + " kW";
+
+  $("solar-today").textContent    = formatEnergy(state.energyToday);
+  $("solar-month").textContent    = formatEnergy(state.energyMonth);
+  $("solar-year").textContent     = formatEnergy(state.energyYear);
+  $("solar-lifetime").textContent = formatEnergy(state.energyLifetime);
+
+  // Status text
+  if (state.currentPower > 0) {
+    $("solar-status").textContent = "Producing";
+  } else {
+    $("solar-status").textContent = "No production";
+  }
+
+  // Source badge
+  const badge = $("solar-source");
+  badge.style.display = "";
+  if (state.source === "solaredge") {
+    badge.textContent = "SolarEdge Live";
+    badge.className = "battery-source source-solaredge";
+  } else {
+    badge.textContent = "Mock";
+    badge.className = "battery-source source-mock";
+  }
+}
+
+async function refreshProduction() {
+  try {
+    const state = await Devices.solarProduction.getState();
+    renderProduction(state);
+  } catch (err) {
+    console.error("Solar production refresh error:", err);
+  }
+}
+
 // ── Victron Settings Modal ───────────────────────────────
 const overlay    = $("settings-overlay");
 const tokenInput = $("vrm-token");
@@ -167,13 +211,80 @@ $("settings-clear").addEventListener("click", () => {
   refreshBattery();
 });
 
+// ── SolarEdge Settings ───────────────────────────────────
+const seKeyInput  = $("se-apikey");
+const seSiteInput = $("se-site");
+const seStatusEl  = $("se-status");
+const seClearBtn  = $("se-clear");
+
+// Populate SolarEdge fields when modal opens
+const _origOpen = openSettings;
+openSettings = function () {
+  _origOpen();
+  const seCreds = typeof SolarEdge !== "undefined" && SolarEdge.getCredentials();
+  if (seCreds) {
+    seKeyInput.value  = seCreds.apiKey;
+    seSiteInput.value = seCreds.siteId;
+    seClearBtn.style.display = "";
+  } else {
+    seKeyInput.value  = "";
+    seSiteInput.value = "";
+    seClearBtn.style.display = "none";
+  }
+  seStatusEl.textContent = "";
+  seStatusEl.className = "modal-status";
+};
+
+$("se-save").addEventListener("click", async () => {
+  const key  = seKeyInput.value.trim();
+  const site = seSiteInput.value.trim();
+
+  if (!key || !site) {
+    seStatusEl.textContent = "Both fields are required.";
+    seStatusEl.className = "modal-status err";
+    return;
+  }
+
+  seStatusEl.textContent = "Testing connection...";
+  seStatusEl.className = "modal-status";
+
+  SolarEdge.setCredentials(key, site);
+  const result = await SolarEdge.testConnection();
+
+  if (result.success) {
+    seStatusEl.textContent = "Connected!";
+    seStatusEl.className = "modal-status ok";
+    seClearBtn.style.display = "";
+    setTimeout(() => {
+      closeSettings();
+      refreshProduction();
+    }, 1200);
+  } else {
+    seStatusEl.textContent = "Failed: " + result.error;
+    seStatusEl.className = "modal-status err";
+  }
+});
+
+$("se-clear").addEventListener("click", () => {
+  SolarEdge.clearCredentials();
+  seKeyInput.value  = "";
+  seSiteInput.value = "";
+  seClearBtn.style.display = "none";
+  seStatusEl.textContent = "Disconnected. Using mock data.";
+  seStatusEl.className = "modal-status";
+  refreshProduction();
+});
+
 // ── Init ─────────────────────────────────────────────────
 updateClock();
 setInterval(updateClock, 10_000);
 
 refreshPump();
 refreshBattery();
+refreshProduction();
 
-// Poll devices every 3 seconds (swap for push/WebSocket when available)
+// Poll devices (swap for push/WebSocket when available)
 setInterval(refreshPump, 3000);
 setInterval(refreshBattery, 3000);
+// SolarEdge: 300 requests/day limit → poll every 5 minutes (288/day)
+setInterval(refreshProduction, 5 * 60 * 1000);
